@@ -1,0 +1,75 @@
+stages:
+  - install
+  - build
+  - test
+  - deploy
+
+variables:
+  NODE_VERSION: "20"
+
+# ── Backend ───────────────────────────────────────────────────────────────────
+
+backend:install:
+  stage: install
+  image: node:$NODE_VERSION-alpine
+  script:
+    - cd backend && npm ci
+  cache:
+    key: backend-$CI_COMMIT_REF_SLUG
+    paths:
+      - backend/node_modules/
+
+backend:test:
+  stage: test
+  image: node:$NODE_VERSION-alpine
+  script:
+    - cd backend && npm test --if-present
+  cache:
+    key: backend-$CI_COMMIT_REF_SLUG
+    paths:
+      - backend/node_modules/
+    policy: pull
+
+# ── Frontend ──────────────────────────────────────────────────────────────────
+
+frontend:install:
+  stage: install
+  image: node:$NODE_VERSION-alpine
+  script:
+    - cd frontend && npm ci
+  cache:
+    key: frontend-$CI_COMMIT_REF_SLUG
+    paths:
+      - frontend/node_modules/
+
+frontend:build:
+  stage: build
+  image: node:$NODE_VERSION-alpine
+  script:
+    - cd frontend && npm run build
+  artifacts:
+    paths:
+      - frontend/build/
+    expire_in: 1 week
+  cache:
+    key: frontend-$CI_COMMIT_REF_SLUG
+    paths:
+      - frontend/node_modules/
+    policy: pull
+
+# ── Docker (optional — requires DOCKER_HUB_USER / DOCKER_HUB_TOKEN CI vars) ──
+
+docker:build-push:
+  stage: deploy
+  image: docker:24
+  services:
+    - docker:24-dind
+  only:
+    - main
+  script:
+    - docker login -u "$DOCKER_HUB_USER" -p "$DOCKER_HUB_TOKEN"
+    - docker build -t $DOCKER_HUB_USER/webapp-backend:latest ./backend
+    - docker build -t $DOCKER_HUB_USER/webapp-frontend:latest ./frontend
+    - docker push $DOCKER_HUB_USER/webapp-backend:latest
+    - docker push $DOCKER_HUB_USER/webapp-frontend:latest
+  when: manual
